@@ -5325,3 +5325,41 @@ function setupModalEvents() {
               document.getElementById("close-btn").addEventListener("click", () => {
                 window.windowControls.close();
               });
+              
+              
+              
+              document.addEventListener('page:change', function(e) {
+    if (!e.detail || !e.detail.page) return;
+    
+    // قائمة الصفحات المحمية التي تتطلب تسجيل الدخول
+    const protectedPages = [
+        'investors', 'transactions', 'profits', 'reports', 'settings'
+    ];
+    
+    // التحقق مما إذا كانت الصفحة المطلوبة محمية
+    if (protectedPages.includes(e.detail.page)) {
+        // التحقق من حالة المصادقة
+        const isAuthenticated = window.AuthSystem ? window.AuthSystem.isAuthenticated() : false;
+        
+        if (!isAuthenticated) {
+            // منع الوصول إلى الصفحة المحمية
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // إظهار نافذة تسجيل الدخول
+            if (window.AuthSystem) {
+                window.AuthSystem.showAuthModal();
+            }
+            
+            // إظهار إشعار للمستخدم
+            if (window.showNotification) {
+                window.showNotification('يجب تسجيل الدخول للوصول إلى هذه الصفحة', 'warning');
+            }
+            
+            // العودة إلى الصفحة الرئيسية
+            showPage('dashboard');
+            
+            return false;
+        }
+    }
+});

@@ -1,283 +1,479 @@
 /**
- * ملف دمج نظام المصادقة مع التطبيق الرئيسي
- * نظام الاستثمار المتكامل
+ * تكامل نظام المصادقة مع التطبيق الرئيسي
+ * يقوم بربط نظام المصادقة مع بقية أجزاء التطبيق
  */
 
-// استدعاء الملفات الأساسية لنظام المصادقة
+// تهيئة التكامل عند تحميل الصفحة
 document.addEventListener('DOMContentLoaded', function() {
-    // إضافة ملفات CSS
-    addStylesheet('auth-system-styles.css');
+    console.log('تهيئة تكامل نظام المصادقة...');
     
-    // إضافة ملفات JavaScript
-    loadScript('auth-system.js', function() {
-        // بعد تحميل نظام المصادقة بنجاح
-        console.log('تم تحميل نظام المصادقة بنجاح');
-        
-        // تعديل التطبيق ليعمل مع نظام المصادقة
-        setupAppWithAuth();
-    });
+    // إضافة مراقب لأحداث المصادقة
+    if (window.AuthSystem) {
+        window.AuthSystem.addAuthObserver(handleAuthEvents);
+    }
+    
+    // تحديث واجهة المستخدم بناءً على حالة المصادقة
+    updateUIBasedOnAuthState();
+    
+    // إضافة مستمعي الأحداث
+    setupIntegrationEventListeners();
 });
 
 /**
- * إضافة ملف CSS للصفحة
- * @param {string} href - مسار ملف CSS
+ * معالجة أحداث المصادقة
+ * @param {Object} event حدث المصادقة
  */
-function addStylesheet(href) {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    document.head.appendChild(link);
-}
-
-/**
- * تحميل ملف JavaScript
- * @param {string} src - مسار ملف JavaScript
- * @param {Function} callback - دالة تنفذ بعد تحميل الملف
- */
-function loadScript(src, callback) {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = callback;
-    script.onerror = function() {
-        console.error(`فشل تحميل الملف: ${src}`);
-    };
-    document.body.appendChild(script);
-}
-
-/**
- * إعداد التطبيق للعمل مع نظام المصادقة
- */
-function setupAppWithAuth() {
-    // الحصول على حالة المصادقة الحالية
-    AuthSystem.initialize()
-        .then(initialized => {
-            if (initialized) {
-                // التحقق من وجود مستخدم حالي
-                const currentUser = AuthSystem.getCurrentUser();
-                
-                if (currentUser) {
-                    console.log(`المستخدم الحالي: ${currentUser.displayName || currentUser.email}`);
-                    
-                    // إضافة معلومات المستخدم إلى الواجهة
-                    updateUserInterface(currentUser);
-                    
-                    // إعداد تسجيل الأحداث لجميع العمليات
-                    setupOperationsLogging();
-                } else {
-                    console.log('لم يتم تسجيل الدخول');
-                    
-                    // عرض شاشة تسجيل الدخول
-                    showLoginScreen();
-                }
-            } else {
-                console.error('فشل في تهيئة نظام المصادقة');
+function handleAuthEvents(event) {
+    console.log('حدث مصادقة:', event.type);
+    
+    switch (event.type) {
+        case 'login':
+            // المستخدم قام بتسجيل الدخول
+            console.log('تم تسجيل الدخول:', event.user);
+            
+            // تحديث واجهة المستخدم
+            updateUIBasedOnAuthState(true);
+            
+            // تحميل البيانات من Firebase
+            syncDataFromFirebase();
+            
+            // إظهار إشعار للمستخدم
+            if (window.showNotification) {
+                window.showNotification(`مرحباً بك ${event.user.displayName || event.user.email}`, 'success');
             }
-        })
-        .catch(error => {
-            console.error('خطأ في تهيئة نظام المصادقة:', error);
-        });
-}
-
-/**
- * تحديث واجهة المستخدم بمعلومات المستخدم
- * @param {Object} user - معلومات المستخدم
- */
-function updateUserInterface(user) {
-    // إضافة معلومات المستخدم إلى الشريط العلوي
-    addUserInfoToHeader(user);
-    
-    // تحديث وصول العناصر حسب صلاحيات المستخدم
-    updateElementsBasedOnPermissions(user);
-    
-    // إضافة صفحات إضافية حسب نوع المستخدم
-    if (AuthSystem.isAdmin()) {
-        // إضافة صفحات خاصة بالمسؤول
-        addAdminPages();
+            break;
+            
+        case 'logout':
+            // المستخدم قام بتسجيل الخروج
+            console.log('تم تسجيل الخروج');
+            
+            // تحديث واجهة المستخدم
+            updateUIBasedOnAuthState(false);
+            
+            // إظهار إشعار للمستخدم
+            if (window.showNotification) {
+                window.showNotification('تم تسجيل الخروج بنجاح', 'info');
+            }
+            break;
+            
+        case 'signup':
+            // المستخدم قام بإنشاء حساب جديد
+            console.log('تم إنشاء حساب جديد:', event.user);
+            
+            // تحديث واجهة المستخدم
+            updateUIBasedOnAuthState(true);
+            
+            // إظهار إشعار ترحيبي للمستخدم الجديد
+            if (window.showNotification) {
+                window.showNotification(`مرحباً بك ${event.user.displayName || event.user.email}، شكراً لانضمامك إلينا!`, 'success');
+            }
+            break;
     }
 }
 
 /**
- * إضافة معلومات المستخدم إلى الشريط العلوي
- * @param {Object} user - معلومات المستخدم
+ * تحديث واجهة المستخدم بناءً على حالة المصادقة
+ * @param {boolean} isAuthenticated حالة المصادقة (اختياري)
  */
-function addUserInfoToHeader(user) {
-    // البحث عن عنصر شريط العنوان
-    const headerActions = document.querySelector('.header-actions');
-    if (!headerActions) return;
+function updateUIBasedOnAuthState(isAuthenticated) {
+    // إذا لم يتم تمرير القيمة، نستخدم حالة المصادقة الحالية
+    const authStatus = isAuthenticated !== undefined
+        ? isAuthenticated
+        : (window.AuthSystem ? window.AuthSystem.isAuthenticated() : false);
     
-    // إنشاء عنصر معلومات المستخدم
-    const userInfo = document.createElement('div');
-    userInfo.className = 'user-info dropdown';
+    // تحديث فئة body حسب حالة المصادقة
+    if (authStatus) {
+        document.body.classList.add('authenticated');
+        document.body.classList.remove('guest');
+    } else {
+        document.body.classList.remove('authenticated');
+        document.body.classList.add('guest');
+    }
     
-    userInfo.innerHTML = `
-        <button class="dropdown-toggle">
-            <div class="user-avatar">${(user.displayName || user.email).charAt(0).toUpperCase()}</div>
-            <div>
-                <div class="user-name">${user.displayName || user.email}</div>
-                <div class="user-type">${getUserTypeLabel(user.type)}</div>
-            </div>
-            <i class="fas fa-chevron-down"></i>
-        </button>
-        <div class="dropdown-menu">
-            <a href="#" class="dropdown-item" id="profile-btn">
-                <i class="fas fa-user"></i>
-                <span>الملف الشخصي</span>
-            </a>
-            <a href="#" class="dropdown-item" id="change-password-btn">
-                <i class="fas fa-key"></i>
-                <span>تغيير كلمة المرور</span>
-            </a>
-            <div class="dropdown-divider"></div>
-            <a href="#" class="dropdown-item" id="logout-btn">
-                <i class="fas fa-sign-out-alt"></i>
-                <span>تسجيل الخروج</span>
-            </a>
-        </div>
-    `;
+    // تحديث قائمة المستخدم في الشريط العلوي
+    updateUserMenuUI();
     
-    // إضافة عنصر معلومات المستخدم إلى الشريط العلوي
-    headerActions.appendChild(userInfo);
-    
-    // إضافة مستمعي الأحداث
-    setupUserMenuListeners();
+    // تحديث أزرار وعناصر التصريح
+    toggleAuthElements();
 }
 
 /**
- * إضافة مستمعي الأحداث لقائمة المستخدم
+ * تحديث قائمة المستخدم في الشريط العلوي
  */
-function setupUserMenuListeners() {
-    // تبديل القائمة المنسدلة
-    const dropdownToggle = document.querySelector('.dropdown-toggle');
-    if (dropdownToggle) {
-        dropdownToggle.addEventListener('click', function(e) {
+function updateUserMenuUI() {
+    const userMenuContainer = document.getElementById('user-menu-container');
+    if (!userMenuContainer) return;
+    
+    const user = window.AuthSystem ? window.AuthSystem.getUserInfo() : null;
+    
+    if (user) {
+        // المستخدم مسجل الدخول - إظهار معلومات المستخدم
+        userMenuContainer.innerHTML = `
+            <div class="user-profile-container">
+                <div class="user-avatar">${getInitials(user.displayName || user.email)}</div>
+                <div class="user-info">
+                    <span class="user-name">${user.displayName || user.email.split('@')[0]}</span>
+                    <span class="user-email">${user.email}</span>
+                </div>
+                <button id="user-menu-toggle" class="btn-icon">
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+            </div>
+        `;
+        
+        // إضافة مستمع حدث للزر
+        const menuToggle = document.getElementById('user-menu-toggle');
+        if (menuToggle) {
+            menuToggle.addEventListener('click', toggleUserMenu);
+        }
+    } else {
+        // المستخدم غير مسجل الدخول - إظهار أزرار تسجيل الدخول/إنشاء حساب
+        userMenuContainer.innerHTML = `
+            <div class="auth-buttons">
+                <button id="login-button" class="btn btn-outline">تسجيل الدخول</button>
+                <button id="signup-button" class="btn btn-primary">إنشاء حساب</button>
+            </div>
+        `;
+        
+        // إضافة مستمعي الأحداث للأزرار
+        const loginButton = document.getElementById('login-button');
+        if (loginButton) {
+            loginButton.addEventListener('click', function() {
+                window.AuthSystem.showAuthModal();
+                switchAuthTab('login');
+            });
+        }
+        
+        const signupButton = document.getElementById('signup-button');
+        if (signupButton) {
+            signupButton.addEventListener('click', function() {
+                window.AuthSystem.showAuthModal();
+                switchAuthTab('signup');
+            });
+        }
+    }
+}
+
+/**
+ * الحصول على الأحرف الأولى من الاسم
+ * @param {string} name الاسم
+ * @returns {string} الأحرف الأولى
+ */
+function getInitials(name) {
+    if (!name) return '?';
+    
+    // استخراج الأحرف الأولى من كل كلمة
+    const words = name.split(/\s+/);
+    if (words.length === 1) {
+        // إذا كان هناك كلمة واحدة فقط، نستخدم الحرف الأول
+        return name.charAt(0).toUpperCase();
+    } else {
+        // إذا كان هناك أكثر من كلمة، نستخدم الحرف الأول من أول كلمتين
+        return (words[0].charAt(0) + (words[1] ? words[1].charAt(0) : '')).toUpperCase();
+    }
+}
+
+/**
+ * إظهار/إخفاء قائمة المستخدم
+ */
+function toggleUserMenu() {
+    // إنشاء القائمة إذا لم تكن موجودة
+    let userMenu = document.getElementById('user-dropdown-menu');
+    
+    if (userMenu) {
+        // إذا كانت القائمة موجودة، قم بإزالتها
+        userMenu.remove();
+        return;
+    }
+    
+    // الحصول على معلومات المستخدم
+    const user = window.AuthSystem ? window.AuthSystem.getUserInfo() : null;
+    if (!user) return;
+    
+    // إنشاء قائمة جديدة
+    userMenu = document.createElement('div');
+    userMenu.id = 'user-dropdown-menu';
+    userMenu.className = 'user-dropdown-menu';
+    
+    userMenu.innerHTML = `
+        <div class="dropdown-menu">
+            <div class="dropdown-header">
+                <div class="user-avatar large">${getInitials(user.displayName || user.email)}</div>
+                <div class="dropdown-user-info">
+                    <div class="dropdown-user-name">${user.displayName || user.email.split('@')[0]}</div>
+                    <div class="dropdown-user-email">${user.email}</div>
+                </div>
+            </div>
+            <div class="dropdown-menu-items">
+                <a href="#" class="dropdown-item" id="profile-menu-item">
+                    <i class="fas fa-user"></i>
+                    <span>الملف الشخصي</span>
+                </a>
+                <a href="#" class="dropdown-item" id="settings-menu-item">
+                    <i class="fas fa-cog"></i>
+                    <span>الإعدادات</span>
+                </a>
+                <div class="dropdown-divider"></div>
+                <a href="#" class="dropdown-item" id="logout-menu-item">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>تسجيل الخروج</span>
+                </a>
+            </div>
+        </div>
+    `;
+    
+    // إضافة القائمة إلى الصفحة
+    const userMenuContainer = document.getElementById('user-menu-container');
+    if (userMenuContainer) {
+        userMenuContainer.appendChild(userMenu);
+    } else {
+        document.body.appendChild(userMenu);
+    }
+    
+    // تحديد موضع القائمة
+    const userAvatar = document.querySelector('.user-avatar');
+    if (userAvatar) {
+        const rect = userAvatar.getBoundingClientRect();
+        userMenu.style.position = 'absolute';
+        userMenu.style.top = `${rect.bottom + 10}px`;
+        userMenu.style.left = `${rect.left}px`;
+        userMenu.style.zIndex = '1000';
+    }
+    
+    // إضافة مستمعي الأحداث لعناصر القائمة
+    const profileMenuItem = document.getElementById('profile-menu-item');
+    if (profileMenuItem) {
+        profileMenuItem.addEventListener('click', function(e) {
             e.preventDefault();
-            e.stopPropagation();
-            
-            const dropdown = this.closest('.dropdown');
-            if (dropdown) {
-                dropdown.classList.toggle('active');
+            // فتح صفحة الملف الشخصي
+            showUserProfile();
+            userMenu.remove();
+        });
+    }
+    
+    const settingsMenuItem = document.getElementById('settings-menu-item');
+    if (settingsMenuItem) {
+        settingsMenuItem.addEventListener('click', function(e) {
+            e.preventDefault();
+            // فتح صفحة الإعدادات
+            openSettingsPage();
+            userMenu.remove();
+        });
+    }
+    
+    const logoutMenuItem = document.getElementById('logout-menu-item');
+    if (logoutMenuItem) {
+        logoutMenuItem.addEventListener('click', function(e) {
+            e.preventDefault();
+            // تسجيل الخروج
+            if (window.AuthSystem) {
+                window.AuthSystem.logout();
             }
+            userMenu.remove();
         });
     }
     
     // إغلاق القائمة عند النقر خارجها
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.dropdown')) {
-            const activeDropdowns = document.querySelectorAll('.dropdown.active');
-            activeDropdowns.forEach(dropdown => {
-                dropdown.classList.remove('active');
-            });
+    document.addEventListener('click', function closeMenu(e) {
+        if (!userMenu.contains(e.target) && e.target.id !== 'user-menu-toggle') {
+            userMenu.remove();
+            document.removeEventListener('click', closeMenu);
+        }
+    });
+}
+
+/**
+ * تبديل ظهور عناصر المصادقة
+ */
+function toggleAuthElements() {
+    const isAuthenticated = window.AuthSystem ? window.AuthSystem.isAuthenticated() : false;
+    
+    // العناصر التي تظهر فقط للمستخدمين المصادقين
+    const authOnlyElements = document.querySelectorAll('.auth-only');
+    authOnlyElements.forEach(element => {
+        if (isAuthenticated) {
+            element.style.display = 'block';
+        } else {
+            element.style.display = 'none';
         }
     });
     
-    // الملف الشخصي
-    const profileBtn = document.getElementById('profile-btn');
-    if (profileBtn) {
-        profileBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            showProfileModal();
-        });
-    }
-    
-    // تغيير كلمة المرور
-    const changePasswordBtn = document.getElementById('change-password-btn');
-    if (changePasswordBtn) {
-        changePasswordBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            showChangePasswordModal();
-        });
-    }
-    
-    // تسجيل الخروج
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // تأكيد تسجيل الخروج
-            if (confirm('هل أنت متأكد من رغبتك في تسجيل الخروج؟')) {
-                AuthSystem.logout()
-                    .then(() => {
-                        // عرض شاشة تسجيل الدخول
-                        showLoginScreen();
-                        
-                        showNotification('تم تسجيل الخروج بنجاح', 'success');
-                    })
-                    .catch(error => {
-                        console.error('خطأ في تسجيل الخروج:', error);
-                        showNotification('حدث خطأ أثناء تسجيل الخروج', 'error');
-                    });
-            }
-        });
+    // العناصر التي تظهر فقط للزوار
+    const guestOnlyElements = document.querySelectorAll('.guest-only');
+    guestOnlyElements.forEach(element => {
+        if (isAuthenticated) {
+            element.style.display = 'none';
+        } else {
+            element.style.display = 'block';
+        }
+    });
+}
+
+/**
+ * مزامنة البيانات من Firebase
+ */
+function syncDataFromFirebase() {
+    // إذا كان هناك وظيفة مزامنة من Firebase
+    if (window.FirebaseSync && typeof window.FirebaseSync.syncFromFirebase === 'function') {
+        window.FirebaseSync.syncFromFirebase()
+            .then(() => {
+                console.log('تمت مزامنة البيانات من Firebase بنجاح');
+                
+                // تحديث واجهة المستخدم بعد المزامنة
+                if (typeof window.updateDashboard === 'function') {
+                    window.updateDashboard();
+                }
+                
+                if (typeof window.renderInvestorsTable === 'function') {
+                    window.renderInvestorsTable();
+                }
+                
+                if (typeof window.renderTransactionsTable === 'function') {
+                    window.renderTransactionsTable();
+                }
+                
+                if (typeof window.renderProfitsTable === 'function') {
+                    window.renderProfitsTable();
+                }
+            })
+            .catch(error => {
+                console.error('خطأ في مزامنة البيانات من Firebase:', error);
+                
+                // محاولة تحميل البيانات المحلية كبديل
+                if (typeof window.loadData === 'function') {
+                    window.loadData();
+                }
+            });
+    } else {
+        // إذا لم تكن هناك وظيفة مزامنة، استخدم وظيفة تحميل البيانات العادية
+        if (typeof window.loadData === 'function') {
+            window.loadData();
+        }
     }
 }
 
 /**
- * تحديث وصول العناصر حسب صلاحيات المستخدم
- * @param {Object} user - معلومات المستخدم
+ * إعداد مستمعي الأحداث الإضافية
  */
-function updateElementsBasedOnPermissions(user) {
-    // إضافة فئة نوع المستخدم للجسم
-    document.body.setAttribute('data-user-type', user.type);
+function setupIntegrationEventListeners() {
+    // إضافة مستمع لزر تسجيل الخروج في الصفحة الرئيسية
+    const logoutButton = document.getElementById('logout-btn');
+    if (logoutButton) {
+        logoutButton.addEventListener('click', function() {
+            if (window.AuthSystem) {
+                window.AuthSystem.logout();
+            }
+        });
+    }
     
-    // عناصر حذف المستثمرين
-    const deleteInvestorsElements = document.querySelectorAll('.delete-investor');
-    deleteInvestorsElements.forEach(element => {
-        if (user.permissions.canDeleteInvestors) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
+    // إضافة مستمعي أحداث للنوافذ المنبثقة المختلفة
+    setupPopupEventListeners();
+}
+
+/**
+ * إعداد مستمعي أحداث للنوافذ المنبثقة
+ */
+function setupPopupEventListeners() {
+    // التحقق من وجود مستمعي أحداث قبل إضافة مستمعي أحداث جديدة
+    if (window._popupEventsInitialized) return;
+    window._popupEventsInitialized = true;
+    
+    // إغلاق النوافذ المنبثقة عند النقر على زر الإغلاق
+    document.addEventListener('click', function(e) {
+        const closeBtn = e.target.closest('.auth-modal-close');
+        if (closeBtn) {
+            const modalOverlay = closeBtn.closest('.auth-modal-overlay');
+            if (modalOverlay) {
+                modalOverlay.classList.remove('active');
+            }
         }
     });
     
-    
-    // عناصر إدارة الإعدادات
-    const settingsManagementElements = document.querySelectorAll('.settings-management');
-    settingsManagementElements.forEach(element => {
-        if (user.permissions.canManageSettings) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
-        }
-    });
-
-    // عناصر تصدير البيانات
-    const exportDataElements = document.querySelectorAll('.export-data');
-    exportDataElements.forEach(element => {
-        if (user.permissions.canExportData) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
-        }
-    });
-
-    // عناصر استيراد البيانات
-    const importDataElements = document.querySelectorAll('.import-data');
-    importDataElements.forEach(element => {
-        if (user.permissions.canImportData) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
-        }
-    });
-
-    // عناصر إنشاء النسخ الاحتياطية
-    const createBackupElements = document.querySelectorAll('.create-backup');
-    createBackupElements.forEach(element => {
-        if (user.permissions.canCreateBackup) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
-        }
-    });
-
-    // عناصر استعادة النسخ الاحتياطية
-    const restoreBackupElements = document.querySelectorAll('.restore-backup');
-    restoreBackupElements.forEach(element => {
-        if (user.permissions.canRestoreBackup) {
-            element.classList.remove('hidden');
-        } else {
-            element.classList.add('hidden');
+    // إظهار النافذة المنبثقة عند النقر على الأزرار المناسبة
+    document.addEventListener('click', function(e) {
+        const loginBtn = e.target.closest('#login-button');
+        const signupBtn = e.target.closest('#signup-button');
+        
+        if (loginBtn) {
+            if (window.AuthSystem) {
+                window.AuthSystem.showAuthModal();
+                switchAuthTab('login');
+            }
+        } else if (signupBtn) {
+            if (window.AuthSystem) {
+                window.AuthSystem.showAuthModal();
+                switchAuthTab('signup');
+            }
         }
     });
 }
+
+/**
+ * التبديل بين علامات تبويب المصادقة
+ * @param {string} tab علامة التبويب (login, signup, reset)
+ */
+function switchAuthTab(tab) {
+    // إخفاء جميع علامات التبويب
+    const tabs = document.querySelectorAll('.auth-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    
+    // إظهار علامة التبويب المطلوبة
+    const selectedTab = document.getElementById(`${tab}-tab`);
+    if (selectedTab) {
+        selectedTab.classList.add('active');
+    }
+    
+    // تحديث العنوان
+    const modalTitle = document.querySelector('.auth-modal-title');
+    if (modalTitle) {
+        switch (tab) {
+            case 'login':
+                modalTitle.textContent = 'تسجيل الدخول';
+                break;
+            case 'signup':
+                modalTitle.textContent = 'إنشاء حساب جديد';
+                break;
+            case 'reset':
+                modalTitle.textContent = 'استعادة كلمة المرور';
+                break;
+        }
+    }
+    
+    // إخفاء أي رسائل خطأ سابقة
+    const errorElement = document.getElementById('auth-error');
+    if (errorElement) {
+        errorElement.style.display = 'none';
+    }
+}
+
+/**
+ * عرض صفحة الملف الشخصي للمستخدم
+ */
+function showUserProfile() {
+    // فتح علامة تبويب الإعدادات
+    const settingsLink = document.querySelector('a[data-page="settings"]');
+    if (settingsLink) {
+        settingsLink.click();
+        
+        // يمكن إضافة منطق إضافي هنا لعرض علامة تبويب الملف الشخصي
+        // (يمكن إضافتها كتحديث مستقبلي)
+    }
+}
+
+/**
+ * فتح صفحة الإعدادات
+ */
+function openSettingsPage() {
+    // فتح علامة تبويب الإعدادات
+    const settingsLink = document.querySelector('a[data-page="settings"]');
+    if (settingsLink) {
+        settingsLink.click();
+    }
+}
+
+// تصدير الوظائف الضرورية
+window.AuthIntegration = {
+    updateUIBasedOnAuthState,
+    syncDataFromFirebase,
+    switchAuthTab
+};
